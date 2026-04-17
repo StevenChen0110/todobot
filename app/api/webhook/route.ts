@@ -75,15 +75,21 @@ function snoozeTime(option: string, baseRemindAt: string | null): string {
   }
 }
 
+const TAIPEI_OFFSET_MS = 8 * 60 * 60 * 1000;
+
 function setTimeToday(baseTime: string | null): string {
-  const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
+  const taipeiNow = new Date(Date.now() + TAIPEI_OFFSET_MS);
+  let hour = 9, min = 0;
   if (baseTime) {
-    const base = new Date(baseTime);
-    now.setHours(base.getHours(), base.getMinutes(), 0, 0);
-  } else {
-    now.setHours(9, 0, 0, 0);
+    const taipeiBase = new Date(new Date(baseTime).getTime() + TAIPEI_OFFSET_MS);
+    hour = taipeiBase.getUTCHours();
+    min = taipeiBase.getUTCMinutes();
   }
-  return now.toISOString();
+  const utcMs = Date.UTC(
+    taipeiNow.getUTCFullYear(), taipeiNow.getUTCMonth(), taipeiNow.getUTCDate(),
+    hour, min, 0
+  ) - TAIPEI_OFFSET_MS;
+  return new Date(utcMs).toISOString();
 }
 
 // ─── Message event handler ────────────────────────────────────
@@ -202,7 +208,8 @@ async function handlePostback(event: line.webhook.PostbackEvent) {
 
     case 'snooze': {
       if (!todoId) break;
-      await replyMessage(replyToken, [buildSnoozeFlex(todoId)]);
+      const todo = await getTodo(todoId);
+      await replyMessage(replyToken, [buildSnoozeFlex(todoId, todo?.remind_at)]);
       break;
     }
 
@@ -309,6 +316,19 @@ async function handlePostback(event: line.webhook.PostbackEvent) {
       const todo = await getTodo(todoId);
       const newTime = snoozeTime('nextweek', todo?.remind_at ?? null);
       await updateTodoTime(todoId, newTime);
+      await clearState(userId);
+      await sendList(replyToken, userId);
+      break;
+    }
+
+    case 'pick_time':
+    case 'snooze_pick': {
+      if (!todoId) break;
+      const postback = event.postback as { data: string; params?: { datetime?: string } };
+      const datetimeStr = postback.params?.datetime;
+      if (!datetimeStr) break;
+      const isoTime = `${datetimeStr}:00+08:00`;
+      await updateTodoTime(todoId, isoTime);
       await clearState(userId);
       await sendList(replyToken, userId);
       break;

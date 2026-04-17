@@ -7,10 +7,16 @@ const anthropic = new Anthropic({
 
 const WEEKDAYS = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
 
+const TAIPEI_OFFSET_MS = 8 * 60 * 60 * 1000;
+
+function taipeiNow(): Date {
+  return new Date(Date.now() + TAIPEI_OFFSET_MS);
+}
+
 export async function parseTaskAndTime(userMessage: string): Promise<ParsedTask> {
-  const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
+  const now = taipeiNow();
   const today = now.toISOString().split('T')[0];
-  const weekday = WEEKDAYS[now.getDay()];
+  const weekday = WEEKDAYS[now.getUTCDay()];
 
   const response = await anthropic.messages.create({
     model: 'claude-haiku-4-5-20251001',
@@ -49,9 +55,9 @@ Respond with JSON only, no markdown:
 }
 
 export async function parseTimeOnly(userMessage: string, baseDatetime?: string): Promise<string | null> {
-  const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
+  const now = taipeiNow();
   const today = now.toISOString().split('T')[0];
-  const weekday = WEEKDAYS[now.getDay()];
+  const weekday = WEEKDAYS[now.getUTCDay()];
   const base = baseDatetime ? `Base datetime: ${baseDatetime}` : '';
 
   const response = await anthropic.messages.create({

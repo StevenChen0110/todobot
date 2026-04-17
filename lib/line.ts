@@ -15,15 +15,27 @@ export async function pushMessage(userId: string, messages: line.messagingApi.Me
   await client.pushMessage({ to: userId, messages });
 }
 
+// ─── Taipei time helpers ──────────────────────────────────────
+
+const TAIPEI_OFFSET_MS = 8 * 60 * 60 * 1000;
+
+function toTaipei(date: Date): Date {
+  return new Date(date.getTime() + TAIPEI_OFFSET_MS);
+}
+
+/** "yyyy-MM-ddTHH:mm" in Taipei local time — used for datetime picker values */
+function taipeiPickerStr(date: Date = new Date()): string {
+  return toTaipei(date).toISOString().slice(0, 16);
+}
+
 // ─── Date formatting ─────────────────────────────────────────
 
 function formatDate(isoString: string): string {
-  const d = new Date(isoString);
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  const hour = String(d.getHours()).padStart(2, '0');
-  const min = String(d.getMinutes()).padStart(2, '0');
-  // Show time only if it's not 09:00 (the default)
+  const d = toTaipei(new Date(isoString));
+  const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  const hour = String(d.getUTCHours()).padStart(2, '0');
+  const min = String(d.getUTCMinutes()).padStart(2, '0');
   if (hour === '09' && min === '00') return `${month}/${day}`;
   return `${month}/${day} ${hour}:${min}`;
 }
@@ -52,7 +64,9 @@ export function buildListFlex(todos: Todo[], hasMore = false): line.messagingApi
         size: 'sm',
         flex: 3,
         wrap: true,
+        maxLines: 2,
         gravity: 'center',
+        adjustMode: 'shrink-to-fit',
       },
       {
         type: 'text',
@@ -62,6 +76,8 @@ export function buildListFlex(todos: Todo[], hasMore = false): line.messagingApi
         flex: 2,
         align: 'end',
         gravity: 'center',
+        wrap: true,
+        adjustMode: 'shrink-to-fit',
       },
       {
         type: 'button',
@@ -107,6 +123,7 @@ export function buildListFlex(todos: Todo[], hasMore = false): line.messagingApi
           text: `📋 待辦清單（${todos.length} 筆）`,
           weight: 'bold',
           size: 'md',
+          adjustMode: 'shrink-to-fit',
         },
       ],
       paddingAll: '16px',
@@ -176,6 +193,7 @@ export function buildReminderFlex(todo: Todo): line.messagingApi.FlexMessage {
           size: 'md',
           wrap: true,
           weight: 'bold',
+          adjustMode: 'shrink-to-fit',
         },
       ],
       paddingAll: '16px',
@@ -233,7 +251,7 @@ export function buildReminderFlex(todo: Todo): line.messagingApi.FlexMessage {
 
 // ─── Flex Message: Snooze options ────────────────────────────
 
-export function buildSnoozeFlex(todoId: string): line.messagingApi.FlexMessage {
+export function buildSnoozeFlex(todoId: string, initialDatetime?: string | null): line.messagingApi.FlexMessage {
   const bubble: line.messagingApi.FlexBubble = {
     type: 'bubble',
     body: {
@@ -282,10 +300,13 @@ export function buildSnoozeFlex(todoId: string): line.messagingApi.FlexMessage {
         {
           type: 'button',
           action: {
-            type: 'postback',
+            type: 'datetimepicker',
             label: '自訂時間',
-            data: `action=snooze_custom&todo_id=${todoId}`,
-            displayText: '自訂時間',
+            data: `action=snooze_pick&todo_id=${todoId}`,
+            mode: 'datetime',
+            initial: initialDatetime ? taipeiPickerStr(new Date(initialDatetime)) : taipeiPickerStr(),
+            min: taipeiPickerStr(),
+            max: '2030-12-31T23:59',
           },
           style: 'link',
         },
@@ -317,8 +338,10 @@ export function buildActionMenuFlex(todo: Todo): line.messagingApi.FlexMessage {
           weight: 'bold',
           size: 'sm',
           wrap: true,
+          maxLines: 3,
           color: '#555555',
           margin: 'md',
+          adjustMode: 'shrink-to-fit',
         },
         {
           type: 'button',
@@ -335,10 +358,13 @@ export function buildActionMenuFlex(todo: Todo): line.messagingApi.FlexMessage {
         {
           type: 'button',
           action: {
-            type: 'postback',
+            type: 'datetimepicker',
             label: '🕐 改時間',
-            data: `action=edit_time&todo_id=${todo.id}`,
-            displayText: '改時間',
+            data: `action=pick_time&todo_id=${todo.id}`,
+            mode: 'datetime',
+            initial: todo.remind_at ? taipeiPickerStr(new Date(todo.remind_at)) : taipeiPickerStr(),
+            min: taipeiPickerStr(),
+            max: '2030-12-31T23:59',
           },
           style: 'secondary',
         },
@@ -398,6 +424,8 @@ export function buildDeleteConfirmFlex(todo: Todo): line.messagingApi.FlexMessag
           size: 'sm',
           color: '#888888',
           wrap: true,
+          maxLines: 3,
+          adjustMode: 'shrink-to-fit',
         },
         {
           type: 'box',
@@ -450,28 +478,39 @@ export function buildSetTimeQuickReply(todoId: string): line.messagingApi.QuickR
       {
         type: 'action',
         action: {
+          type: 'datetimepicker',
+          label: '選時間',
+          data: `action=pick_time&todo_id=${todoId}`,
+          mode: 'datetime',
+          min: taipeiPickerStr(),
+          max: '2030-12-31T23:59',
+        },
+      },
+      {
+        type: 'action',
+        action: {
           type: 'postback',
-          label: '今天',
+          label: '今天 9am',
           data: `action=set_time_today&todo_id=${todoId}`,
-          displayText: '今天',
+          displayText: '今天 9am',
         },
       },
       {
         type: 'action',
         action: {
           type: 'postback',
-          label: '明天',
+          label: '明天 9am',
           data: `action=set_time_tomorrow&todo_id=${todoId}`,
-          displayText: '明天',
+          displayText: '明天 9am',
         },
       },
       {
         type: 'action',
         action: {
           type: 'postback',
-          label: '下週',
+          label: '下週 9am',
           data: `action=set_time_nextweek&todo_id=${todoId}`,
-          displayText: '下週',
+          displayText: '下週 9am',
         },
       },
     ],
